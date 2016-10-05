@@ -1,0 +1,8 @@
+---
+Name: chartroutes
+After:
+  - '#rootroutes'
+---
+Director:
+  rules:
+    'chartview//$ID/$Action' : 'ChartView'

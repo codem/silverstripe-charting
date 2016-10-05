@@ -1,0 +1,9 @@
+---
+Name: charts
+After:
+  - 'framework/*'
+  - 'cms/*'
+---
+SiteTree:
+  extensions:
+    - ChartSiteTreeExtension
