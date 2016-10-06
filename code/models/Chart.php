@@ -24,7 +24,8 @@ class Chart extends \DataObject {
 	private static $summary_fields = array(
 		'ID' => '#',
 		'Title' => 'Title',
-		'SourceURL' => 'Source URL',
+		'ChartSource' => 'Source',
+		'ChartSourceURL' => 'Source URL',
 		'EnabledNice' => 'Enabled',
 	);
 
@@ -64,6 +65,17 @@ class Chart extends \DataObject {
 	 */
 	public function canPreview($member) {
 		return TRUE;
+	}
+
+	public function ChartSource() {
+		$file = $this->SourceFile();
+		if(!empty($file->ID) && ($file instanceof ChartFile)) {
+			return "Uploaded file";
+		} else if($this->SourceURL) {
+			return "Remote URL";
+		} else {
+			return "";
+		}
 	}
 
 	public function ChartSourceURL() {
