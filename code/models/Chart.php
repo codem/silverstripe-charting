@@ -5,6 +5,7 @@ use Codem\Charts\ChartConfiguration as ChartConfiguration;
 class Chart extends \DataObject {
 
 	private $max_width = 512;
+	private $in_preview = FALSE;
 
 	private static $default_sort = "Sort";
 	private static $singular_name = "Chart";
@@ -15,8 +16,8 @@ class Chart extends \DataObject {
 		'Title' => 'Varchar(255)',
 		'Description' => 'Text',
 		'SourceURL' => 'Varchar(255)',
-		'ChartType' => 'Enum(\'Pie,Bar,HorizontalBar,Line,Scatter,Doughnut,TimeSeries\',\'Line\')',
-		'ConfigurationCompletedd' => 'Boolean',// can only display if configuration completed
+		'ChartType' => 'Enum(\'Pie,Bar,HorizontalBar,Line,Scatter,TimeSeries\',\'Line\')',
+		'ConfigurationCompleted' => 'Boolean',// can only display if configuration completed
 		'Sort' => 'Int'
 	);
 
@@ -48,6 +49,14 @@ class Chart extends \DataObject {
 
 	public function EncodedSourceURL() {
 		return strip_tags($this->SourceURL);
+	}
+
+	public function setInPreview($in) {
+		$this->in_preview = $in;
+	}
+
+	public function InPreview() {
+		return $this->in_preview;
 	}
 
 	/**
@@ -97,7 +106,7 @@ class Chart extends \DataObject {
 				$this->AuthorID = $member->ID;
 			}
 		}
-		
+
 		// create a configuration if one has not been created already
 		if(empty($this->ConfigurationID)) {
 			// config is not complete
@@ -109,7 +118,7 @@ class Chart extends \DataObject {
 				$this->ConfigurationID = $configuration_id;
 			}
 		}
-		
+
 		if(empty($this->ConfigurationCompleted) || $this->ConfigurationCompleted != 1) {
 			$this->Enabled = 0;
 		}
@@ -117,18 +126,18 @@ class Chart extends \DataObject {
 	}
 
 	public function getCmsFields() {
-		
+
 		$fields = parent::getCmsFields();
 		$fields->removeByName('Sort');
 		$fields->removeByName('Pages');
-		$fields->removeByName('ConfigurationCompletedd');
+		$fields->removeByName('ConfigurationCompleted');
 		$fields->removeByName('ConfigurationID');
-		
+
 		$fields->addFieldToTab('Root.Main', $this->CsvUploadField(), 'SourceURL');
 		$fields->addFieldToTab('Root.Main', \DropdownField::create('AuthorID', 'Author', \Member::get()->map('ID','Title')), 'Description');
-		
+
 		if(!empty($this->ID)) {
-		
+
 			// TODO add some information here about the chart requiring configuration (if not yet configured)
 			$fields->addFieldToTab(
 				'Root.Main',
@@ -138,34 +147,34 @@ class Chart extends \DataObject {
 				),
 				'Title'
 			);
-			
+
 			// in the admin, set a max width for the preview, in line with other fields
 			$this->setMaxWidth(512);
 			$fields->addFieldToTab('Root.Main', ChartPreviewField::create('ChartPreview', 'Preview')->setChart( $this ) );
-			
+
 			// provide a configuration form based on the file uploaded and the type selected
 			$configuration = $this->Configuration();
 			if($configuration->exists()) {
-				
+
 				$fields->addFieldToTab('Root.Configuration', \ReadOnlyField::create('CurrentConfiguration', 'Configuration', $configuration->getTitle()));
-			
+
 				$configuration_button = \HasOneButtonField::create('Configuration', 'Configuration', $this);
 				$configuration_button_config = $configuration_button->getConfig();
 				$edit_button = $configuration_button_config->getComponentByType('GridFieldHasOneEditButton');
 				$add_button = $configuration_button_config->getComponentByType('GridFieldAddNewButton');
 				$edit_button->setButtonName('Edit Configuration');
 				$add_button->setButtonName('Add new configuration');
-				
+
 				/*
 				$detail_form = $configuration_button_config->getComponentByType('GridFieldDetailForm');
 				$detail_form->setItemEditFormCallback( function($form) {} );
 				*/
-				
+
 				$fields->addFieldToTab('Root.Configuration', $configuration_button);
 			} else {
-				
+
 			}
-			
+
 		} else {
 			$fields->removeByName('Enabled');
 		}
@@ -177,7 +186,7 @@ class Chart extends \DataObject {
 		if(!$url) {
 			return FALSE;
 		}
-		
+
 		try {
 			$ch = curl_init();
 			$timeout = 5;
@@ -187,24 +196,24 @@ class Chart extends \DataObject {
 			// Because some hosts sniff user agents like wget and curl
 			curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36");
 			$data = curl_exec($ch);
-			
+
 			curl_close($ch);
 			$tmpfile = tmpfile();
 			fwrite($tmpfile, $data);
 			rewind($tmpfile);
-			
+
 			$row = fgetcsv($tmpfile, 0, ",", "\"");
 			fclose($tmpfile);//rm the tmpfile
-			
+
 			$row = (!empty($row) ? $row : array());
 			$source = array();
 			foreach($row as $value) {
 				$source[$value] = $value;
 			}
 			return $source;
-		
+
 		} catch (Exception $e) {
-		
+
 		}
 
 		return FALSE;
@@ -225,17 +234,20 @@ class Chart extends \DataObject {
 	public function setMaxWidth($max) {
 		$this->max_width = $max;
 	}
-	
+
 	public function getDefaultHeight() {
 		return 300;
 	}
 
 	public function getWidthHeightStyle() {
 		$config = $this->Configuration();
+		if(empty($config->ID)) {
+			return "";
+		}
 		$width = $config->Width;
 		$height = $config->Height;
 		return "width:" . ($width > 0 ? ($width . "px") : "100%") . ";"
-				. "height:" . ($height > 0 ? ($height . "px") : "100%");
+				. "height:" . ($height > 0 ? ($height . "px") : "100%") . ";";
 	}
 
 

@@ -24,8 +24,13 @@ class ChartView extends \Controller {
 			return "";
 		}
 
+		// show even if not enabled
+		$chart->setInPreview(TRUE);
+		$charts = new ArrayList();
+		$charts->push( $chart );
 		$template_data = new ArrayData( array(
 			'Chart' => $chart,
+			'Charts' => $charts,
 			'Title' => 'Chart preview',
 		));
 		return  $this->customise($template_data)
