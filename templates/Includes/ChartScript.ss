@@ -1,62 +1,56 @@
-<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<% if Charts %>
 <script>
-$('.chart[data-chart-id]').each(
-	function() {
-		try {
-			var _chart = this;
-			var src = $(this).attr('data-chart-source');
-			if(!src) {
-				throw 'No src available';
-			}
-			var xAxisTitle = $(this).attr('data-chart-xaxis');
-			var yAxisTitle = $(this).attr('data-chart-yaxis');
-
-			Plotly.d3.csv(src, function(rows){
-				var column_names = Object.keys(rows[0]);
-				console.log(column_names);
-				var trace = {
-					line : {
-						width : 1
-					},
-					type : $(this).attr('data-chart-type'),
-					mode : 'lines+markers',
-					x : rows.map( function(row) {
-							return row[column_names[1]]
-						}),
-					y : rows.map( function(row) {
-							return row[column_names[2]]
-						}),
-				};
-
-				var layout = {
-					'title' : $(this).attr('data-chart-title'),
-					'showlegend' : false,
-					'margin' : { l:4, t:4, b:4, r:4 }
-				};
-				layout.yaxis = {
-					'showgrid' : true
-				};
-				layout.xaxis = {
-					'showgrid' : true
-				};
-
-				layout.yaxis.title = (yAxisTitle ? yAxisTitle : '');
-				layout.xaxis.title = (xAxisTitle ? xAxisTitle : '');
-
-				var opts = {
-					'showLink' : false,
-					'scrollZoom' : false
-				};
-
-				console.log('plotting....');
-				Plotly.plot( _chart , [trace], layout, { showLink: false });
-
-			});
-
-		} catch (e) {
-			console.log( $(this).attr('id') + ' failed...' );
-			console.log(e)
+	var Charts = function() {};
+	Charts.prototype = {
+		items : [],
+		init : function() {},
+		add : function(key, configuration) {
+			this.items[key] = configuration;
+		},
+		get : function(key) {
+			return this.items[key];
 		}
- 	}
-);
+	};
+	var cht = new Charts();
+	<% loop Charts %>
+		$Configuration.Script
+		
+		cht.add('$ID', configuration);
+	<% end_loop %>
+	
 </script>
+<script>
+$(document).ready(	 function($) {
+	$('.chart[data-chart-id]').each(
+		function() {
+			try {
+				
+				var _chart = this;
+				
+				var id = $(this).attr('data-chart-id');
+				var src = $(this).attr('data-chart-source');
+				if(!src) {
+					throw 'No src available';
+				}
+				var config = cht.get(id);
+				Plotly.d3.csv(src, function(rows) {
+					var trace = config.trace(rows);
+					var layout = config.layout;
+					var opts = {
+						'showLink' : false,
+						'scrollZoom' : false
+					};
+					Plotly.plot( _chart , [trace], layout, opts);
+
+				});
+			} catch (e) {
+				console.log( $(this).attr('id') + ' failed...' );
+				console.log(e)
+			}
+			
+		}
+	);
+});
+</script>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<% end_if %>

@@ -1,6 +1,7 @@
 <?php
 namespace Codem\Charts;
 use Codem\Charts\ChartPreviewField as ChartPreviewField;
+use Codem\Charts\ChartConfiguration as ChartConfiguration;
 class Chart extends \DataObject {
 
 	private $max_width = 512;
@@ -14,28 +15,20 @@ class Chart extends \DataObject {
 		'Title' => 'Varchar(255)',
 		'Description' => 'Text',
 		'SourceURL' => 'Varchar(255)',
-		'ChartType' => 'Enum(\'Pie,Bar,HorizontalBar,Line,Scatter,Doughnut\',\'Line\')',
-		'SupportMultipleDatasets' => 'Boolean',
-		'Width' => 'Int',
-		'Height' => 'Int',
-		'XAxisTitle' => 'Varchar(255)',
-		'YAxisTitle' => 'Varchar(255)',
-		'ConfigurationCompleted' => 'Boolean',// can only display if configuration completed
+		'ChartType' => 'Enum(\'Pie,Bar,HorizontalBar,Line,Scatter,Doughnut,TimeSeries\',\'Line\')',
+		'ConfigurationCompletedd' => 'Boolean',// can only display if configuration completed
 		'Sort' => 'Int'
 	);
 
 	private static $summary_fields = array(
 		'ID' => '#',
 		'Title' => 'Title',
-		'Width' => 'Width',
-		'Height' => 'Height',
 		'SourceURL' => 'Source URL',
 		'EnabledNice' => 'Enabled',
 	);
 
 	private static $defaults = array(
 		'Enabled' => 0,
-		'SupportMultipleDatasets' => 0,
 		'ChartType' => 'Line',
 	);
 
@@ -104,48 +97,114 @@ class Chart extends \DataObject {
 				$this->AuthorID = $member->ID;
 			}
 		}
+		
+		// create a configuration if one has not been created already
+		if(empty($this->ConfigurationID)) {
+			// config is not complete
+			$this->ConfigurationCompleted = 0;
+			// create a new configuration
+			$configuration = new ChartConfiguration();
+			$configuration_id = $configuration->write();
+			if(!empty($configuration_id)) {
+				$this->ConfigurationID = $configuration_id;
+			}
+		}
+		
+		if(empty($this->ConfigurationCompleted) || $this->ConfigurationCompleted != 1) {
+			$this->Enabled = 0;
+		}
 		return TRUE;
 	}
 
 	public function getCmsFields() {
+		
 		$fields = parent::getCmsFields();
 		$fields->removeByName('Sort');
 		$fields->removeByName('Pages');
+		$fields->removeByName('ConfigurationCompletedd');
 		$fields->removeByName('ConfigurationID');
+		
 		$fields->addFieldToTab('Root.Main', $this->CsvUploadField(), 'SourceURL');
+		$fields->addFieldToTab('Root.Main', \DropdownField::create('AuthorID', 'Author', \Member::get()->map('ID','Title')), 'Description');
+		
 		if(!empty($this->ID)) {
+		
+			// TODO add some information here about the chart requiring configuration (if not yet configured)
+			$fields->addFieldToTab(
+				'Root.Main',
+				\CheckboxField::create(
+					'Enabled',
+					'Display chart on website'
+				),
+				'Title'
+			);
+			
+			// in the admin, set a max width for the preview, in line with other fields
 			$this->setMaxWidth(512);
 			$fields->addFieldToTab('Root.Main', ChartPreviewField::create('ChartPreview', 'Preview')->setChart( $this ) );
-
-			$fields->addFieldToTab('Root.Configuration', \CheckboxField::create(
-				'SupportMultipleDatasets',
-				'Support Multiple Datasets'
-			));
-
+			
 			// provide a configuration form based on the file uploaded and the type selected
-			if($this->Configuration()->exists()) {
-				$fields->addFieldToTab('Root.Configuration', ReadOnlyField::create('CurrentConfiguration', 'Configuration', '--config--'));
+			$configuration = $this->Configuration();
+			if($configuration->exists()) {
+				
+				$fields->addFieldToTab('Root.Configuration', \ReadOnlyField::create('CurrentConfiguration', 'Configuration', $configuration->getTitle()));
+			
+				$configuration_button = \HasOneButtonField::create('Configuration', 'Configuration', $this);
+				$configuration_button_config = $configuration_button->getConfig();
+				$edit_button = $configuration_button_config->getComponentByType('GridFieldHasOneEditButton');
+				$add_button = $configuration_button_config->getComponentByType('GridFieldAddNewButton');
+				$edit_button->setButtonName('Edit Configuration');
+				$add_button->setButtonName('Add new configuration');
+				
+				/*
+				$detail_form = $configuration_button_config->getComponentByType('GridFieldDetailForm');
+				$detail_form->setItemEditFormCallback( function($form) {} );
+				*/
+				
+				$fields->addFieldToTab('Root.Configuration', $configuration_button);
+			} else {
+				
 			}
-			$fields->removeByName('ConfigurationID');
-			$fields->addFieldToTab('Root.Configuration', \HasOneButtonField::create('Configuration', 'Configuration', $this));
+			
 		} else {
 			$fields->removeByName('Enabled');
 		}
 		return $fields;
 	}
 
-	protected function CheckSource() {
+	public function getSourceHeadings() {
 		$url = $this->ChartSourceURL();
 		if(!$url) {
 			return FALSE;
 		}
-
-		if($fp = fopen($url, 'r')) {
-			$header = fgetcsv($fp, 0, ",", "\"");
-			fclose($fp);
-			if(!empty($header)) {
-				return $header;
+		
+		try {
+			$ch = curl_init();
+			$timeout = 5;
+			curl_setopt($ch, CURLOPT_URL, $url);
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+			curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $timeout);
+			// Because some hosts sniff user agents like wget and curl
+			curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36");
+			$data = curl_exec($ch);
+			
+			curl_close($ch);
+			$tmpfile = tmpfile();
+			fwrite($tmpfile, $data);
+			rewind($tmpfile);
+			
+			$row = fgetcsv($tmpfile, 0, ",", "\"");
+			fclose($tmpfile);//rm the tmpfile
+			
+			$row = (!empty($row) ? $row : array());
+			$source = array();
+			foreach($row as $value) {
+				$source[$value] = $value;
 			}
+			return $source;
+		
+		} catch (Exception $e) {
+		
 		}
 
 		return FALSE;
@@ -166,10 +225,17 @@ class Chart extends \DataObject {
 	public function setMaxWidth($max) {
 		$this->max_width = $max;
 	}
+	
+	public function getDefaultHeight() {
+		return 300;
+	}
 
 	public function getWidthHeightStyle() {
-		return "width:" . ($this->Width > 0 ? ($this->Width . "px") : "100%") . ";"
-				. "height:" . ($this->Height > 0 ? ($this->Height . "px") : "100%");
+		$config = $this->Configuration();
+		$width = $config->Width;
+		$height = $config->Height;
+		return "width:" . ($width > 0 ? ($width . "px") : "100%") . ";"
+				. "height:" . ($height > 0 ? ($height . "px") : "100%");
 	}
 
 
