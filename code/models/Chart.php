@@ -10,15 +10,17 @@ class Chart extends \DataObject {
 	private static $plural_name  = "Charts";
 
 	private static $db = array(
+		'Enabled' => 'Boolean',
 		'Title' => 'Varchar(255)',
 		'Description' => 'Text',
 		'SourceURL' => 'Varchar(255)',
-		'ChartType' => 'Enum(\'Pie,Bar,Line,Doughnut\',\'Line\')',
+		'ChartType' => 'Enum(\'Pie,Bar,HorizontalBar,Line,Scatter,Doughnut\',\'Line\')',
+		'SupportMultipleDatasets' => 'Boolean',
 		'Width' => 'Int',
 		'Height' => 'Int',
-		'Enabled' => 'Boolean',
 		'XAxisTitle' => 'Varchar(255)',
 		'YAxisTitle' => 'Varchar(255)',
+		'ConfigurationCompleted' => 'Boolean',// can only display if configuration completed
 		'Sort' => 'Int'
 	);
 
@@ -33,12 +35,14 @@ class Chart extends \DataObject {
 
 	private static $defaults = array(
 		'Enabled' => 0,
+		'SupportMultipleDatasets' => 0,
 		'ChartType' => 'Line',
 	);
 
 	private static $has_one = array(
 		'SourceFile' => 'Codem\Charts\ChartFile',
 		'Author' => 'Member',
+		'Configuration' => 'Codem\Charts\ChartConfiguration'
 	);
 
 	private static $belongs_many_many = array(
@@ -88,16 +92,63 @@ class Chart extends \DataObject {
 		return $field;
 	}
 
+	/**
+	 * Event handler called before writing to the database.
+	 */
+	public function onBeforeWrite()
+	{
+		parent::onBeforeWrite();
+		if(empty($this->ID) && empty($this->AuthorID)) {
+			$member = Member::currentUser();
+			if(!empty($member->ID)) {
+				$this->AuthorID = $member->ID;
+			}
+		}
+		return TRUE;
+	}
+
 	public function getCmsFields() {
 		$fields = parent::getCmsFields();
 		$fields->removeByName('Sort');
 		$fields->removeByName('Pages');
+		$fields->removeByName('ConfigurationID');
 		$fields->addFieldToTab('Root.Main', $this->CsvUploadField(), 'SourceURL');
 		if(!empty($this->ID)) {
 			$this->setMaxWidth(512);
 			$fields->addFieldToTab('Root.Main', ChartPreviewField::create('ChartPreview', 'Preview')->setChart( $this ) );
+
+			$fields->addFieldToTab('Root.Configuration', \CheckboxField::create(
+				'SupportMultipleDatasets',
+				'Support Multiple Datasets'
+			));
+
+			// provide a configuration form based on the file uploaded and the type selected
+			if($this->Configuration()->exists()) {
+				$fields->addFieldToTab('Root.Configuration', ReadOnlyField::create('CurrentConfiguration', 'Configuration', '--config--'));
+			}
+			$fields->removeByName('ConfigurationID');
+			$fields->addFieldToTab('Root.Configuration', \HasOneButtonField::create('Configuration', 'Configuration', $this));
+		} else {
+			$fields->removeByName('Enabled');
 		}
 		return $fields;
+	}
+
+	protected function CheckSource() {
+		$url = $this->ChartSourceURL();
+		if(!$url) {
+			return FALSE;
+		}
+
+		if($fp = fopen($url, 'r')) {
+			$header = fgetcsv($fp, 0, ",", "\"");
+			fclose($fp);
+			if(!empty($header)) {
+				return $header;
+			}
+		}
+
+		return FALSE;
 	}
 
 	/**

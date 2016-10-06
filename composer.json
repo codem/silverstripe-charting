@@ -3,7 +3,8 @@
 	"description" : "Consume  data from CSV and display using one or more charting frontends",
 	"require" : {
 		"php": ">=5.5",
-		"silverstripe/framework": "~3.2"
+		"silverstripe/framework": "~3.2",
+		"burnbright/silverstripe-hasonefield": "dev-master"
 	},
 	"minimum-stability" : "dev"
 }
