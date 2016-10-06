@@ -104,7 +104,6 @@ class ChartConfiguration extends \DataObject {
 		$fields->push( \HeaderField::create('ChartConfigurationHeading]', "Configuration for chart", 3) );
 		$fields->push( \LiteralField::create('ChartConfigurationHelper', "<p class=\"message\">There are " . count($source) . " columns in the source file</p>") );
 
-		// Pie,Bar,HorizontalBar,Line,Scatter,Doughnut
 		switch($chart->ChartType) {
 			case 'Pie':
 				// a pie chart has labels in one column and data in another
@@ -113,7 +112,6 @@ class ChartConfiguration extends \DataObject {
 				break;
 			case 'Bar':
 				// a bar chart has x/y axis fields and formats
-				$fields->push( $this->getModeField() );
 				$fields->push( $this->getXAxisTitleField() );
 				$fields->push( $this->getYAxisTitleField() );
 				$fields->push( $this->getXAxisFormatField() );
@@ -311,7 +309,20 @@ configuration.layout = {
 SCRIPT;
 				break;
 			case 'Bar':
-
+			$script .= <<<SCRIPT
+configuration.trace = function(rows) {
+return {
+	type : 'bar',
+	x : rows.map( function(row) { return row['$xcolumn'] }),
+	y : rows.map( function(row) { return row['$ycolumn'] })
+};
+};
+configuration.layout = {
+$layout_title
+showlegend : false,
+$layout_margin
+};
+SCRIPT;
 				break;
 			case 'HorizontalBar':
 
