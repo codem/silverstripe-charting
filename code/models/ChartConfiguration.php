@@ -355,14 +355,13 @@ configuration.layout = {
 	line : { 'width' : 1 },
 	yaxis : { title : '$ytitle', tickformat : '$yformat' },
 	xaxis : { title : '$xtitle', tickformat : '$xformat' },
-	$layout_title,
+	$layout_title
 	showlegend : false,
 	$layout_margin
 };
 SCRIPT;
 				break;
 			case 'Scatter':
-			case 'TimeSeries':
 				$script .= <<<SCRIPT
 configuration.trace = function(rows) {
 	return {
@@ -373,7 +372,30 @@ configuration.trace = function(rows) {
 	};
 };
 configuration.layout = {
-	$layout_title,
+	line : { 'width' : 1 },
+	yaxis : { title : '$ytitle', tickformat : '$yformat' },
+	xaxis : { title : '$xtitle', tickformat : '$xformat' },
+	$layout_title
+	showlegend : false,
+	$layout_margin
+};
+SCRIPT;
+				break;
+			case 'TimeSeries':
+			$script .= <<<SCRIPT
+configuration.trace = function(rows) {
+	return {
+		mode : '$mode',
+		type : 'scatter',
+		x : rows.map( function(row) { return row['$xcolumn'] }),
+		y : rows.map( function(row) { return row['$ycolumn'] })
+	};
+};
+configuration.layout = {
+	line : { 'width' : 1 },
+	yaxis : { title : '$ytitle', tickformat : '$yformat' },
+	xaxis : { title : '$xtitle', tickformat : '$xformat' },
+	$layout_title
 	showlegend : false,
 	$layout_margin
 };
@@ -392,7 +414,7 @@ configuration.trace = function(rows) {
 	};
 };
 configuration.layout = {
-	$layout_title,
+	$layout_title
 	showlegend : false,
 	$layout_margin
 };
