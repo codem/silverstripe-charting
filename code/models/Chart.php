@@ -110,11 +110,11 @@ class Chart extends \DataObject {
 	}
 
 	private function CsvUploadField() {
-		$field = \UploadField::create('SourceFile', 'Source File')
-					->setAllowedExtensions(array('csv'))
-					->setFolderName('ChartSourceFiles');
+		$field = \UploadField::create('SourceFile', 'Source File');
+		$field->setAllowedExtensions(array('csv'));
+		$field->setFoldername('Uploads/ChartSourceFiles');
+		$field->setDisplayFoldername('Uploads/ChartSourceFiles');
 		$field->setAllowedMaxFileNumber(1);
-
 		return $field;
 	}
 
