@@ -24,6 +24,7 @@ class Chart extends \DataObject {
 	private static $summary_fields = array(
 		'ID' => '#',
 		'Title' => 'Title',
+		'ChartType' => 'Type',
 		'ChartSource' => 'Source',
 		'ChartSourceURL' => 'Source URL',
 		'EnabledNice' => 'Enabled',
