@@ -36,7 +36,7 @@ class Chart extends \DataObject {
 
 	private static $has_one = array(
 		'SourceFile' => 'Codem\Charts\ChartFile',
-		'Author' => 'Member',
+		'Author' => 'Member',// TODO
 		'Configuration' => 'Codem\Charts\ChartConfiguration'
 	);
 
@@ -48,6 +48,10 @@ class Chart extends \DataObject {
 		return $this->Enabled == 1 ? "yes" : "no";
 	}
 
+	/**
+	 * @note remove cruft from an uploaded file URL
+	 * @todo check against CSV imports, special characters and the like
+	 */
 	public function EncodedSourceURL() {
 		return strip_tags($this->SourceURL);
 	}
@@ -67,6 +71,10 @@ class Chart extends \DataObject {
 		return TRUE;
 	}
 
+	/**
+	 * @returns string
+	 * @note return where the source is coming from
+	 */
 	public function ChartSource() {
 		$file = $this->SourceFile();
 		if(!empty($file->ID) && ($file instanceof ChartFile)) {
@@ -78,6 +86,10 @@ class Chart extends \DataObject {
 		}
 	}
 
+	/**
+	 * @returns string
+	 * @note determine the chart source URL, local file is taken first if it exists
+	 */
 	public function ChartSourceURL() {
 		$file = $this->SourceFile();
 		if(!empty($file->ID) && ($file instanceof ChartFile)) {
@@ -119,11 +131,11 @@ class Chart extends \DataObject {
 			}
 		}
 
-		// create a configuration if one has not been created already
+		// create a configuration if one has not been created already - allows for better relation management
 		if(empty($this->ConfigurationID)) {
 			// config is not complete
 			$this->ConfigurationCompleted = 0;
-			// create a new configuration
+			// create a new configuration for this chart, probably on first save
 			$configuration = new ChartConfiguration();
 			$configuration_id = $configuration->write();
 			if(!empty($configuration_id)) {
@@ -131,6 +143,7 @@ class Chart extends \DataObject {
 			}
 		}
 
+		// if config is not completed, the chart cannot be enabled
 		if(empty($this->ConfigurationCompleted) || $this->ConfigurationCompleted != 1) {
 			$this->Enabled = 0;
 		}
@@ -166,26 +179,18 @@ class Chart extends \DataObject {
 
 			// provide a configuration form based on the file uploaded and the type selected
 			$configuration = $this->Configuration();
-			if($configuration->exists()) {
-
-				$fields->addFieldToTab('Root.Configuration', \ReadOnlyField::create('CurrentConfiguration', 'Configuration', $configuration->getTitle()));
-
-				$configuration_button = \HasOneButtonField::create('Configuration', 'Configuration', $this);
-				$configuration_button_config = $configuration_button->getConfig();
-				$edit_button = $configuration_button_config->getComponentByType('GridFieldHasOneEditButton');
-				$add_button = $configuration_button_config->getComponentByType('GridFieldAddNewButton');
-				$edit_button->setButtonName('Edit Configuration');
-				$add_button->setButtonName('Add new configuration');
-
-				/*
-				$detail_form = $configuration_button_config->getComponentByType('GridFieldDetailForm');
-				$detail_form->setItemEditFormCallback( function($form) {} );
-				*/
-
-				$fields->addFieldToTab('Root.Configuration', $configuration_button);
-			} else {
-
+			// basic title for config
+			$fields->addFieldToTab('Root.Configuration', \ReadOnlyField::create('CurrentConfiguration', 'Configuration', $configuration->getTitle()));
+			$configuration_button = \HasOneButtonField::create('Configuration', 'Configuration', $this);
+			$configuration_button_config = $configuration_button->getConfig();
+			$edit_button = $configuration_button_config->getComponentByType('GridFieldHasOneEditButton');
+			$add_button = $configuration_button_config->getComponentByType('GridFieldAddNewButton');
+			$edit_button->setButtonName('Edit Configuration');
+			$add_button->setButtonName('Add new configuration');
+			if($this->ConfigurationCompleted == 1) {
+				$add_button->setButtonName('Edit configuration');
 			}
+			$fields->addFieldToTab('Root.Configuration', $configuration_button);
 
 		} else {
 			$fields->removeByName('Enabled');
