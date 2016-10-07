@@ -80,6 +80,7 @@ class ChartConfiguration extends \DataObject {
 			$fields->removeByName('Width');
 			$fields->removeByName('Height');
 			$fields->removeByName('SupportMultipleDatasets');
+			$fields->removeByName('IncludeTitleInChart');
 		}
 
 		return $fields;
