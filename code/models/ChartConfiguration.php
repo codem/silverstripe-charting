@@ -122,7 +122,6 @@ class ChartConfiguration extends \DataObject {
 				break;
 			case 'HorizontalBar':
 				// like a bar, but the other way ;)
-				$fields->push( $this->getModeField() );
 				$fields->push( $this->getXAxisTitleField() );
 				$fields->push( $this->getYAxisTitleField() );
 				$fields->push( $this->getXAxisFormatField() );
@@ -311,11 +310,11 @@ SCRIPT;
 			case 'Bar':
 			$script .= <<<SCRIPT
 configuration.trace = function(rows) {
-return {
-	type : 'bar',
-	x : rows.map( function(row) { return row['$xcolumn'] }),
-	y : rows.map( function(row) { return row['$ycolumn'] })
-};
+	return {
+		type : 'bar',
+		x : rows.map( function(row) { return row['$xcolumn'] }),
+		y : rows.map( function(row) { return row['$ycolumn'] })
+	};
 };
 configuration.layout = {
 $layout_title
@@ -325,7 +324,21 @@ $layout_margin
 SCRIPT;
 				break;
 			case 'HorizontalBar':
-
+			$script .= <<<SCRIPT
+configuration.trace = function(rows) {
+	return {
+		type : 'bar',
+		x : rows.map( function(row) { return row['$xcolumn'] }),
+		y : rows.map( function(row) { return row['$ycolumn'] }),
+		orientation : 'h'
+	};
+};
+configuration.layout = {
+$layout_title
+showlegend : false,
+$layout_margin
+};
+SCRIPT;
 				break;
 			case 'Line':
 				$script .= <<<SCRIPT
