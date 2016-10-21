@@ -4,6 +4,8 @@ use Codem\Charts\ChartPreviewField as ChartPreviewField;
 use Codem\Charts\ChartConfiguration as ChartConfiguration;
 class Chart extends \DataObject {
 
+	private $default_configuration;
+
 	private $max_width = 512;
 	private $in_preview = FALSE;
 
@@ -13,10 +15,10 @@ class Chart extends \DataObject {
 
 	private static $db = array(
 		'Enabled' => 'Boolean',
-		'Title' => 'Varchar(255)',
-		'Description' => 'Text',
-		'SourceURL' => 'Varchar(255)',
 		'ChartType' => 'Enum(\'Pie,Bar,HorizontalBar,Line,Scatter,TimeSeries\',\'Line\')',
+		'Title' => 'Varchar(255)',
+		'SourceURL' => 'Varchar(255)',
+		'Description' => 'Text',
 		'ConfigurationCompleted' => 'Boolean',// can only display if configuration completed
 		'Sort' => 'Int'
 	);
@@ -38,12 +40,24 @@ class Chart extends \DataObject {
 	private static $has_one = array(
 		'SourceFile' => 'Codem\Charts\ChartFile',
 		'Author' => 'Member',// TODO
-		'Configuration' => 'Codem\Charts\ChartConfiguration'
+	);
+
+	private static $has_many = array(
+		'Configurations' => 'Codem\Charts\ChartConfiguration'
 	);
 
 	private static $belongs_many_many = array(
 		'Pages' => 'SiteTree',// a chart can appear in multiple pages
 	);
+
+	public function Configuration($force = FALSE) {
+		if($this->default_configuration && !$force) {
+			return $this->default_configuration;
+		} else {
+			$this->default_configuration = $this->Configurations()->filter('IsDefault', 1)->sort('Sort ASC, Created DESC')->first();
+		}
+		return $this->default_configuration;
+	}
 
 	public function EnabledNice() {
 		return $this->Enabled == 1 ? "yes" : "no";
@@ -111,6 +125,7 @@ class Chart extends \DataObject {
 	}
 
 	private function CsvUploadField() {
+		\Folder::find_or_make('Uploads/ChartSourceFiles');
 		$field = \UploadField::create('SourceFile', 'Source File');
 		$field->setAllowedExtensions(array('csv'));
 		$field->setFoldername('Uploads/ChartSourceFiles');
@@ -124,23 +139,12 @@ class Chart extends \DataObject {
 	 */
 	public function onBeforeWrite()
 	{
+
 		parent::onBeforeWrite();
 		if(empty($this->ID) && empty($this->AuthorID)) {
 			$member = Member::currentUser();
 			if(!empty($member->ID)) {
 				$this->AuthorID = $member->ID;
-			}
-		}
-
-		// create a configuration if one has not been created already - allows for better relation management
-		if(empty($this->ConfigurationID)) {
-			// config is not complete
-			$this->ConfigurationCompleted = 0;
-			// create a new configuration for this chart, probably on first save
-			$configuration = new ChartConfiguration();
-			$configuration_id = $configuration->write();
-			if(!empty($configuration_id)) {
-				$this->ConfigurationID = $configuration_id;
 			}
 		}
 
@@ -151,15 +155,79 @@ class Chart extends \DataObject {
 		return TRUE;
 	}
 
+	/**
+	 * Event handler called after writing to the database.
+	 */
+	public function onAfterWrite()
+	{
+		parent::onAfterWrite();
+		// create a default configuration if one has not been created already - allows for better relation management
+		$configs = $this->Configurations();
+		if($configs->count() == 0) {
+			// config is not complete
+			$this->ConfigurationCompleted = 0;
+			// create a new configuration for this chart, probably on first save
+			$configuration = new ChartConfiguration();
+			$configuration->IsDefault = 1;
+			$configuration->ChartID = $this->ID;
+			$configuration->write();
+		}
+	}
+
+	public function ConfigurationsField() {
+		$field = \GridField::create('Configurations', 'Configurations', $this->Configurations()->sort('IsDefault DESC, Sort ASC, Created DESC') );
+		$config = new \GridFieldConfig_RelationEditor();
+		$field->setConfig( $config );
+
+		$add_button = $config->getComponentByType('GridFieldAddNewButton');
+		$add_button->setButtonName('Add a configuration');
+
+		$detail = $config->getComponentByType('GridFieldDetailForm');
+		// set a ChartID for new components
+		$model = new ChartConfiguration();
+		$model->ChartID = $this->ID;
+		$detail->setFields($model->getCMSFields());
+		// Set the callback: a closure which accepts one parameter - the edit form
+		/*
+		$detail->setItemEditFormCallback(
+			function($form) {
+				$configuration = $form->getRecord();
+		});
+		*/
+
+		return $field;
+	}
+
 	public function getCmsFields() {
 
 		$fields = parent::getCmsFields();
 		$fields->removeByName('Sort');
 		$fields->removeByName('Pages');
 		$fields->removeByName('ConfigurationCompleted');
-		$fields->removeByName('ConfigurationID');
+		$fields->removeByName('Configurations');
+		$fields->removeByName('SourceURL');
+		$fields->removeByName('SourceFile');
 
-		$fields->addFieldToTab('Root.Main', $this->CsvUploadField(), 'SourceURL');
+		$fields->addFieldToTab(
+			'Root.Main',
+			\CompositeField::create(
+				\LiteralField::create('SourceLiteral', '<p class="message">Choose a source, either a URL or an uploaded file. If a file is uploaded, it takes precedence.</p>'),
+				\TextField::create('SourceURL', 'Source URL'),
+				\LabelField::create('OR'),
+				$this->CsvUploadField()
+			)->setTag('Fieldset')->setLegend('Source'),
+			'Description'
+		);
+
+		$source_url = $this->ChartSourceURL();
+		if($source_url) {
+			$fields->addFieldToTab(
+				'Root.Main',
+				\LiteralField::create('SourceString', '<p class="message">Current source: <em>' . $source_url . '</em>.</p>'),
+				'SourceURL'
+			);
+		}
+
 		$fields->addFieldToTab('Root.Main', \DropdownField::create('AuthorID', 'Author', \Member::get()->map('ID','Title')), 'Description');
 
 		if(!empty($this->ID)) {
@@ -178,20 +246,8 @@ class Chart extends \DataObject {
 			$this->setMaxWidth(512);
 			$fields->addFieldToTab('Root.Main', ChartPreviewField::create('ChartPreview', 'Preview')->setChart( $this ) );
 
-			// provide a configuration form based on the file uploaded and the type selected
-			$configuration = $this->Configuration();
-			// basic title for config
-			$fields->addFieldToTab('Root.Configuration', \ReadOnlyField::create('CurrentConfiguration', 'Configuration', $configuration->getTitle()));
-			$configuration_button = \HasOneButtonField::create('Configuration', 'Configuration', $this);
-			$configuration_button_config = $configuration_button->getConfig();
-			$edit_button = $configuration_button_config->getComponentByType('GridFieldHasOneEditButton');
-			$add_button = $configuration_button_config->getComponentByType('GridFieldAddNewButton');
-			$edit_button->setButtonName('Edit Configuration');
-			$add_button->setButtonName('Add new configuration');
-			if($this->ConfigurationCompleted == 1) {
-				$add_button->setButtonName('Edit configuration');
-			}
-			$fields->addFieldToTab('Root.Configuration', $configuration_button);
+			// grid field for configurations
+			$fields->addFieldToTab('Root.Main', $this->ConfigurationsField(), 'Title');
 
 		} else {
 			$fields->removeByName('Enabled');

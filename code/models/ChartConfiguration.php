@@ -8,15 +8,18 @@ class ChartConfiguration extends \DataObject {
 
 	private $configuration;
 
-	private static $default_sort = "ID";
-	private static $singular_name = "Chart configuration";
-	private static $plural_name  = "Configuration of charts";
+	private static $default_sort = "IsDefault DESC, Sort ASC, Created DESC";
 
-	private static $belongs_to  = array(
-		'Chart' => 'Codem\Charts\Chart.Configuration'
+	private static $singular_name = "Chart configuration";
+	private static $plural_name  = "Chart configurations";
+
+	private static $has_one = array(
+		'Chart' => 'Codem\Charts\Chart'
 	);
 
 	private static $db = array(
+		'Sort' => 'Int',
+		'IsDefault' => 'Boolean',
 		'Width' => 'Int',
 		'Height' => 'Int',
 		'SupportMultipleDatasets' => 'Boolean',
@@ -24,8 +27,28 @@ class ChartConfiguration extends \DataObject {
 		'Config' => 'Text'
 	);
 
+	private static $summary_fields = array(
+		'ID' => '#',
+		'Title' => 'Title',
+		'IsDefaultNice' => 'Default?',
+		'Width' => 'Width',
+		'Height' => 'Height',
+	);
+
+	public function IsDefaultNice() {
+		return $this->IsDefault == 1 ? "yes" : "no";
+	}
+
 	public function getTitle() {
-		return $this->ID;
+		return ($this->IsDefault == 1 ? "Default " : "") . "Configuration with width={$this->Width}, height={$this->Height}";
+	}
+
+	public function FindChart() {
+		$chart = $this->Chart();
+		if(empty($chart->ID) && !empty($this->ChartID)) {
+			$chart = Chart::get()->filter('ID', $this->ChartID)->first();
+		}
+		return $chart;
 	}
 
 	private function grabConfig() {
@@ -47,6 +70,7 @@ class ChartConfiguration extends \DataObject {
 		$request = $controller->getRequest();
 		$post = $request->postVar('ConfigData');
 		$this->Config = json_encode($post);
+
 		return TRUE;
 	}
 
@@ -56,8 +80,12 @@ class ChartConfiguration extends \DataObject {
 	public function onAfterWrite()
 	{
 		parent::onAfterWrite();
-		$chart = $this->Chart();
+		$chart = $this->FindChart();
 		if(!empty($chart->ID)) {
+			// Update IsDefault, turn other defaults off
+			if($this->IsDefault == 1) {
+				\DB::query("UPDATE `Codem\Charts\ChartConfiguration` SET IsDefault=0 WHERE ChartID= '" . \Convert::raw2sql($this->ChartID) . "' AND ID <> '" . \Convert::raw2sql($this->ID) . "'");
+			}
 			// avoid chart->write() calling this again...
 			\DB::query("UPDATE `Codem\Charts\Chart` SET ConfigurationCompleted=1 WHERE ID='" . \Convert::raw2sql($chart->ID) . "'");
 		}
@@ -68,6 +96,8 @@ class ChartConfiguration extends \DataObject {
 
 		$fields = parent::getCmsFields();
 		$fields->removeByName('Config');
+		$fields->removeByName('ChartID');
+		$fields->removeByName('Sort');
 
 		try {
 			$fieldlist = $this->getConfigurationFormFields();
@@ -89,7 +119,8 @@ class ChartConfiguration extends \DataObject {
 
 	public function getConfigurationFormFields() {
 		$fields = \FieldList::create();
-		$chart = $this->Chart();
+
+		$chart = $this->FindChart();
 
 		if(empty($chart->ID)) {
 			throw new \Exception("The chart does not exist, cannot configure it!");
@@ -249,6 +280,43 @@ class ChartConfiguration extends \DataObject {
 		return \TextField::create('ConfigData[YAxisFormat]', "Y-Axis Format", $this->getConfigValue('YAxisFormat'));
 	}
 
+	// configurators call this and extract() the keys into local variables
+	public function ScriptValues($chart) {
+
+		$title = $chart->Title;
+		if(!$this->IncludeTitleInChart) {
+			// if an empty title is specified, the layout box is still shown and takes up space
+			$layout_title = "";
+		} else {
+			$layout_title = "title : '{$title}',";
+		}
+
+		$extract = array(
+
+			'support_multiple_datasets' => $this->SupportMultipleDatasets,
+			'mode' => addslashes($this->getConfigValue('Mode')),
+
+			'xcolumn' => addslashes($this->getConfigValue('XAxisColumn')),
+			'ycolumn' => addslashes($this->getConfigValue('YAxisColumn')),
+
+			'xtitle' => addslashes($this->getConfigValue('XAxisTitle')),
+			'ytitle' => addslashes($this->getConfigValue('YAxisTitle')),
+
+			'xformat' => addslashes($this->getConfigValue('XAxisFormat')),
+			'yformat' => addslashes($this->getConfigValue('YAxisFormat')),
+
+			'dcolumn' => addslashes($this->getConfigValue('DataColumn')),
+			'lcolumn' => addslashes($this->getConfigValue('LabelColumn')),
+
+			'layout_title' => $layout_title,
+
+			'layout_margin' => 'margin : { l: 60, b: 60, r: 60, t: 60 }',// TODO configure margins
+
+		);
+
+		return $extract;
+	}
+
 
 	/**
 	 * Script() renders the saved configuration into something Plotly understands
@@ -256,33 +324,20 @@ class ChartConfiguration extends \DataObject {
 	 */
 	public function Script() {
 
-		$chart =  $this->Chart();
+		$chart =  $this->FindChart();
+
+		if(empty($chart->ID)) {
+			return "";
+		}
+
 
 		$height = (int)$this->Height;
 		$width = (int)$this->Width;
 
+		$extract = $this->ScriptValues($chart);
+		extract($extract);
+
 		$title = addslashes($chart->Title);
-		$mode = addslashes($this->getConfigValue('Mode'));
-
-		$xcolumn = addslashes($this->getConfigValue('XAxisColumn'));
-		$ycolumn = addslashes($this->getConfigValue('YAxisColumn'));
-
-		$xtitle = addslashes($this->getConfigValue('XAxisTitle'));
-		$ytitle = addslashes($this->getConfigValue('YAxisTitle'));
-
-		$xformat = addslashes($this->getConfigValue('XAxisFormat'));
-		$yformat = addslashes($this->getConfigValue('YAxisFormat'));
-
-		$dcolumn = addslashes($this->getConfigValue('DataColumn'));
-		$lcolumn = addslashes($this->getConfigValue('LabelColumn'));
-
-		$layout_margin = "margin : { l: 60, b: 60, r: 60, t: 60 }";
-		if(!$this->IncludeTitleInChart) {
-			// if an empty title is specified, the layout box is still shown and takes up space
-			$layout_title = "";
-		} else {
-			$layout_title = "title : '{$title}',";
-		}
 
 		$script = <<<SCRIPT
 
@@ -293,46 +348,22 @@ SCRIPT;
 
 		switch($chart->ChartType) {
 			case 'Pie':
-				$script .= <<<SCRIPT
-configuration.trace = function(rows) {
-	return {
-		type : 'pie',
-		values : rows.map( function(row) { return row['$dcolumn'] }),
-		labels : rows.map( function(row) { return row['$lcolumn'] })
-	};
-};
-configuration.layout = {
-	$layout_title
-	showlegend : false,
-	$layout_margin
-};
-SCRIPT;
-				break;
 			case 'Bar':
-			$script .= <<<SCRIPT
-configuration.trace = function(rows) {
-	return {
-		type : 'bar',
-		x : rows.map( function(row) { return row['$xcolumn'] }),
-		y : rows.map( function(row) { return row['$ycolumn'] })
-	};
-};
-configuration.layout = {
-$layout_title
-showlegend : false,
-$layout_margin
-};
-SCRIPT;
+				$class = "Codem\\Charts\\" . $chart->ChartType;
+				$config = new $class($this);
+				$script .= $config->ScriptValue($chart);
 				break;
+
+
 			case 'HorizontalBar':
 			$script .= <<<SCRIPT
 configuration.trace = function(rows) {
-	return {
+	return [{
 		type : 'bar',
 		x : rows.map( function(row) { return row['$xcolumn'] }),
 		y : rows.map( function(row) { return row['$ycolumn'] }),
 		orientation : 'h'
-	};
+	}];
 };
 configuration.layout = {
 $layout_title
@@ -344,12 +375,12 @@ SCRIPT;
 			case 'Line':
 				$script .= <<<SCRIPT
 configuration.trace = function(rows) {
-	return {
+	return [{
 		mode : '$mode',
 		type : 'scatter',
 		x : rows.map( function(row) { return row['$xcolumn'] }),
 		y : rows.map( function(row) { return row['$ycolumn'] })
-	};
+	}];
 };
 configuration.layout = {
 	line : { 'width' : 1 },
@@ -364,12 +395,12 @@ SCRIPT;
 			case 'Scatter':
 				$script .= <<<SCRIPT
 configuration.trace = function(rows) {
-	return {
+	return [{
 		mode : '$mode',
 		type : 'scatter',
 		x : rows.map( function(row) { return row['$xcolumn'] }),
 		y : rows.map( function(row) { return row['$ycolumn'] })
-	};
+	}];
 };
 configuration.layout = {
 	line : { 'width' : 1 },
@@ -384,12 +415,12 @@ SCRIPT;
 			case 'TimeSeries':
 			$script .= <<<SCRIPT
 configuration.trace = function(rows) {
-	return {
+	return [{
 		mode : '$mode',
 		type : 'scatter',
 		x : rows.map( function(row) { return row['$xcolumn'] }),
 		y : rows.map( function(row) { return row['$ycolumn'] })
-	};
+	}];
 };
 configuration.layout = {
 	line : { 'width' : 1 },
@@ -404,14 +435,14 @@ SCRIPT;
 			case 'Bubble':
 				$script .= <<<SCRIPT
 configuration.trace = function(rows) {
-	return {
+	return [{
 		mode : 'markers',
 		x : rows.map( function(row) { return row['$xcolumn'] }),
 		y : rows.map( function(row) { return row['$ycolumn'] }),
 		marker: {
 			size : rows.map( function(row) { return row['$dcolumn'] })
 		}
-	};
+	}];
 };
 configuration.layout = {
 	$layout_title

@@ -1,4 +1,4 @@
-<% if Charts %>
+<% if EnabledCharts %>
 	<% loop Charts %>
 		<% include ChartElement %>
 	<% end_loop %>
