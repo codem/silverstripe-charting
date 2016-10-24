@@ -6,7 +6,7 @@ use Codem\Charts\Chart as Chart;
  */
 class ChartConfiguration extends \DataObject {
 
-	private $configuration;
+	private $configuration, $chart;
 
 	private static $default_sort = "IsDefault DESC, Sort ASC, Created DESC";
 
@@ -43,15 +43,23 @@ class ChartConfiguration extends \DataObject {
 		return ($this->IsDefault == 1 ? "Default " : "") . "Configuration with width={$this->Width}, height={$this->Height}";
 	}
 
+	/**
+	 * @note retrieve instance of Chart  linked to this configuration
+	 * @returns mixed
+	 */
 	public function FindChart() {
-		$chart = $this->Chart();
-		if(empty($chart->ID) && !empty($this->ChartID)) {
-			$chart = Chart::get()->filter('ID', $this->ChartID)->first();
+		if(!empty($this->chart)) {
+			return $this->chart;
 		}
-		return $chart;
+		$this->chart = $this->Chart();
+		if(empty($this->chart->ID) && !empty($this->ChartID)) {
+			// for new records, not yet saved, use the ChartID set from the Chart::getCmsFields
+			$this->chart = Chart::get()->filter('ID', $this->ChartID)->first();
+		}
+		return $this->chart;
 	}
 
-	private function grabConfig() {
+	private function populateConfig() {
 		if(empty($this->configuration)) {
 			$this->configuration = json_decode($this->Config, FALSE);
 		}
@@ -59,7 +67,7 @@ class ChartConfiguration extends \DataObject {
 	}
 
 	public function getConfigValue($name) {
-		$config = $this->grabConfig();
+		$config = $this->populateConfig();
 		return (isset($config->$name) ? $config->$name : NULL);
 	}
 
@@ -167,11 +175,14 @@ class ChartConfiguration extends \DataObject {
 				$fields->push( $this->getModeField() );
 				$fields->push( $this->getXAxisTitleField() );
 				$fields->push( $this->getYAxisTitleField() );
-				$fields->push( $this->getXAxisFormatField() );
-				$fields->push( $this->getYAxisFormatField() );
 				// which column for which axis?
 				$fields->push( $this->getXAxisColumn($source) );
 				$fields->push( $this->getYAxisColumn($source) );
+
+				$fields->push( $this->getLineWidthField() );
+
+				$fields->push( $this->getXAxisFormatField() );
+				$fields->push( $this->getYAxisFormatField() );
 				break;
 			case 'Scatter':
 			case 'TimeSeries':
@@ -185,21 +196,32 @@ class ChartConfiguration extends \DataObject {
 				$fields->push( $this->getYAxisColumn($source) );
 				break;
 			case 'Bubble':
-				// bubbles have 3 data columns - an  x/y pos +  marker size
-				// Bubble charts have the mode of 'markers' always
+				// Bubbles plot a point in X/Y with a label, marker size is the data column
 				$fields->push( $this->getXAxisTitleField() );
 				$fields->push( $this->getYAxisTitleField() );
 				// the position of the markers on the chart
 				$fields->push( $this->getXAxisColumn($source) );
 				$fields->push( $this->getYAxisColumn($source) );
-				// the data column represents the marker size
+				// a label for each bubble
+				$fields->push( $this->getLabelColumn($source) );
+				// the data column represents the raw data
 				$fields->push( $this->getDataColumn($source) );
+				// the marker column represents the marker size in px
+				$fields->push( $this->getMarkerColumn($source) );
 				break;
 			default:
 				// Unsupported chart type
 				break;
 		}
 		return $fields;
+	}
+
+	/**
+	 * @returns TextField
+	 * @note for relevant charts, returns the line width
+	 */
+	public function getLineWidthField() {
+		return \TextField::create('ConfigData[LineWidth]', "Line Width", $this->getConfigValue('LineWidth'));
 	}
 
 	/**
@@ -221,6 +243,14 @@ class ChartConfiguration extends \DataObject {
 	 */
 	public function getLabelColumn($source) {
 		return \DropdownField::create('ConfigData[LabelColumn]', "Label Column", $source, $this->getConfigValue('XAxisColumn'));
+	}
+
+	/**
+	 * @returns DropdownField
+	 * @note for relevant charts (Bubble, marker plots), allows a marker size to be determined for each row
+	 */
+	public function getMarkerColumn($source) {
+		return \DropdownField::create('ConfigData[MarkerColumn]', "Marker Size Column", $source, $this->getConfigValue('MarkerColumn'));
 	}
 
 	/**
@@ -280,182 +310,42 @@ class ChartConfiguration extends \DataObject {
 		return \TextField::create('ConfigData[YAxisFormat]', "Y-Axis Format", $this->getConfigValue('YAxisFormat'));
 	}
 
-	// configurators call this and extract() the keys into local variables
-	public function ScriptValues($chart) {
-
-		$title = $chart->Title;
-		if(!$this->IncludeTitleInChart) {
-			// if an empty title is specified, the layout box is still shown and takes up space
-			$layout_title = "";
-		} else {
-			$layout_title = "title : '{$title}',";
-		}
-
-		$extract = array(
-
-			'support_multiple_datasets' => $this->SupportMultipleDatasets,
-			'mode' => addslashes($this->getConfigValue('Mode')),
-
-			'xcolumn' => addslashes($this->getConfigValue('XAxisColumn')),
-			'ycolumn' => addslashes($this->getConfigValue('YAxisColumn')),
-
-			'xtitle' => addslashes($this->getConfigValue('XAxisTitle')),
-			'ytitle' => addslashes($this->getConfigValue('YAxisTitle')),
-
-			'xformat' => addslashes($this->getConfigValue('XAxisFormat')),
-			'yformat' => addslashes($this->getConfigValue('YAxisFormat')),
-
-			'dcolumn' => addslashes($this->getConfigValue('DataColumn')),
-			'lcolumn' => addslashes($this->getConfigValue('LabelColumn')),
-
-			'layout_title' => $layout_title,
-
-			'layout_margin' => 'margin : { l: 60, b: 60, r: 60, t: 60 }',// TODO configure margins
-
-		);
-
-		return $extract;
-	}
-
-
 	/**
 	 * Script() renders the saved configuration into something Plotly understands
 	 * @returns string
 	 */
 	public function Script() {
-
 		$chart =  $this->FindChart();
-
 		if(empty($chart->ID)) {
-			return "";
+			throw new Exception("No chart provided for Script Configuration");
+		}
+		if(empty($chart->ChartType)) {
+			throw new Exception("No chart type provided for Script Configuration");
 		}
 
+		$chart_id = $chart->ID;
 
-		$height = (int)$this->Height;
-		$width = (int)$this->Width;
+		$title = "";
+		$configurator = "Codem\\Charts\\" . $chart->ChartType;
 
-		$extract = $this->ScriptValues($chart);
-		extract($extract);
-
-		$title = addslashes($chart->Title);
-
-		$script = <<<SCRIPT
-
-var configuration = {};
-// TYPE:{$chart->ChartType}
-
-SCRIPT;
-
+		$script = "";
 		switch($chart->ChartType) {
 			case 'Pie':
 			case 'Bar':
-				$class = "Codem\\Charts\\" . $chart->ChartType;
-				$config = new $class($this);
-				$script .= $config->ScriptValue($chart);
-				break;
-
-
 			case 'HorizontalBar':
-			$script .= <<<SCRIPT
-configuration.trace = function(rows) {
-	return [{
-		type : 'bar',
-		x : rows.map( function(row) { return row['$xcolumn'] }),
-		y : rows.map( function(row) { return row['$ycolumn'] }),
-		orientation : 'h'
-	}];
-};
-configuration.layout = {
-$layout_title
-showlegend : false,
-$layout_margin
-};
-SCRIPT;
-				break;
 			case 'Line':
-				$script .= <<<SCRIPT
-configuration.trace = function(rows) {
-	return [{
-		mode : '$mode',
-		type : 'scatter',
-		x : rows.map( function(row) { return row['$xcolumn'] }),
-		y : rows.map( function(row) { return row['$ycolumn'] })
-	}];
-};
-configuration.layout = {
-	line : { 'width' : 1 },
-	yaxis : { title : '$ytitle', tickformat : '$yformat' },
-	xaxis : { title : '$xtitle', tickformat : '$xformat' },
-	$layout_title
-	showlegend : false,
-	$layout_margin
-};
-SCRIPT;
-				break;
 			case 'Scatter':
-				$script .= <<<SCRIPT
-configuration.trace = function(rows) {
-	return [{
-		mode : '$mode',
-		type : 'scatter',
-		x : rows.map( function(row) { return row['$xcolumn'] }),
-		y : rows.map( function(row) { return row['$ycolumn'] })
-	}];
-};
-configuration.layout = {
-	line : { 'width' : 1 },
-	yaxis : { title : '$ytitle', tickformat : '$yformat' },
-	xaxis : { title : '$xtitle', tickformat : '$xformat' },
-	$layout_title
-	showlegend : false,
-	$layout_margin
-};
-SCRIPT;
-				break;
 			case 'TimeSeries':
-			$script .= <<<SCRIPT
-configuration.trace = function(rows) {
-	return [{
-		mode : '$mode',
-		type : 'scatter',
-		x : rows.map( function(row) { return row['$xcolumn'] }),
-		y : rows.map( function(row) { return row['$ycolumn'] })
-	}];
-};
-configuration.layout = {
-	line : { 'width' : 1 },
-	yaxis : { title : '$ytitle', tickformat : '$yformat' },
-	xaxis : { title : '$xtitle', tickformat : '$xformat' },
-	$layout_title
-	showlegend : false,
-	$layout_margin
-};
-SCRIPT;
-				break;
 			case 'Bubble':
-				$script .= <<<SCRIPT
-configuration.trace = function(rows) {
-	return [{
-		mode : 'markers',
-		x : rows.map( function(row) { return row['$xcolumn'] }),
-		y : rows.map( function(row) { return row['$ycolumn'] }),
-		marker: {
-			size : rows.map( function(row) { return row['$dcolumn'] })
-		}
-	}];
-};
-configuration.layout = {
-	$layout_title
-	showlegend : false,
-	$layout_margin
-};
-SCRIPT;
+				$config = new $configurator($this);
+				$script = $config->ScriptValue();
 				break;
 			default:
 				break;
-		}
+		} //end switch
 
+		// Script to render chart
+		$script = "//TYPE:{$chart->ChartType}\ncht.add($chart_id, { $script } );";
 		return $script;
 	}
 }
-?>

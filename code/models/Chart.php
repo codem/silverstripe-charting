@@ -6,7 +6,7 @@ class Chart extends \DataObject {
 
 	private $default_configuration;
 
-	private $max_width = 512;
+	private $max_width = "";
 	private $in_preview = FALSE;
 
 	private static $default_sort = "Sort";
@@ -15,7 +15,7 @@ class Chart extends \DataObject {
 
 	private static $db = array(
 		'Enabled' => 'Boolean',
-		'ChartType' => 'Enum(\'Pie,Bar,HorizontalBar,Line,Scatter,TimeSeries\',\'Line\')',
+		'ChartType' => 'Enum(\'Pie,Bar,HorizontalBar,Line,Scatter,TimeSeries,Bubble\',\'Line\')',
 		'Title' => 'Varchar(255)',
 		'SourceURL' => 'Varchar(255)',
 		'Description' => 'Text',
@@ -184,9 +184,12 @@ class Chart extends \DataObject {
 
 		$detail = $config->getComponentByType('GridFieldDetailForm');
 		// set a ChartID for new components
+		/*
 		$model = new ChartConfiguration();
 		$model->ChartID = $this->ID;
 		$detail->setFields($model->getCMSFields());
+		*/
+
 		// Set the callback: a closure which accepts one parameter - the edit form
 		/*
 		$detail->setItemEditFormCallback(
@@ -243,7 +246,7 @@ class Chart extends \DataObject {
 			);
 
 			// in the admin, set a max width for the preview, in line with other fields
-			$this->setMaxWidth(512);
+			//$this->setMaxWidth(512);
 			$fields->addFieldToTab('Root.Main', ChartPreviewField::create('ChartPreview', 'Preview')->setChart( $this ) );
 
 			// grid field for configurations
@@ -281,8 +284,9 @@ class Chart extends \DataObject {
 
 			$row = (!empty($row) ? $row : array());
 			$source = array();
-			foreach($row as $value) {
-				$source[$value] = $value;
+			foreach($row as $k=>$value) {
+				$col = ($k+1);
+				$source[$value] = $value . " (column #{$col})";
 			}
 			return $source;
 

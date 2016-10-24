@@ -1,30 +1,32 @@
 <?php
 namespace Codem\Charts;
 use Codem\Charts\Configurator as Configurator;
-class Bar extends Configurator {
+use Codem\Charts\Line as Line;
+class Scatter extends Line {
 
 	protected $orientation = 'v';
+	protected $line_width = 1;
 
 	public function ScriptValue() {
 
 		$xcolumn = $this->config->getConfigValue('XAxisColumn');
 		$ycolumn = $this->config->getConfigValue('YAxisColumn');
+		$mode = $this->config->getConfigValue('Mode');// lines markers etc
+		$layout = $this->getLayout();
 
-		// layout options
-		$title = $this->getLayoutTitle();
-		$margin = $this->getLayoutMargin();
-		$legend = $this->getLayoutLegend();
-
-		$layout = json_encode(array_merge(
-			$title,
-			$margin,
-			$legend
-		));
+		$line_width = round($this->config->getConfigValue('LineWidth'));
+		if($line_width <= 0) {
+			$line_width = 1;
+		}
 
 		$script = <<<SCRIPT
 		trace : function(rows) {
 			return [{
-				type : 'bar',
+				mode : '$mode',
+				type : 'scatter',
+				line : {
+					width: $line_width
+			  },
 				x : rows.map( function(row) { return row['$xcolumn'] }),
 				y : rows.map( function(row) { return row['$ycolumn'] }),
 				orientation : '$this->orientation'

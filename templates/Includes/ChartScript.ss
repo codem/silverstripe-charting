@@ -13,9 +13,7 @@
 	};
 	var cht = new Charts();
 	<% loop Charts %>
-		$Configuration.Script
-
-		cht.add('$ID', configuration);
+	$Configuration.Script
 	<% end_loop %>
 
 </script>
@@ -26,17 +24,18 @@
 		$('.chart[data-chart-id]').each(
 			function() {
 				try {
-
 					var _chart = this;
 
 					var id = $(this).attr('data-chart-id');
-
-					console.log(id);
+					if(!id) {
+						throw 'Element has no data-chart-id';
+					}
 
 					var src = $(this).attr('data-chart-source');
 					if(!src) {
-						throw 'No src available';
+						throw 'Element has no data-chart-source';
 					}
+
 					var config = cht.get(id);
 					Plotly.d3.csv(src, function(rows) {
 						var data = config.trace(rows);
@@ -49,8 +48,7 @@
 
 					});
 				} catch (e) {
-					console.log( $(this).attr('id') + ' failed...' );
-					console.log(e)
+					console.error( 'Failed...' + e);
 				}
 
 			}
