@@ -4,7 +4,7 @@ use Codem\Charts\ChartPreviewField as ChartPreviewField;
 use Codem\Charts\ChartConfiguration as ChartConfiguration;
 class Chart extends \DataObject {
 
-	private $default_configuration;
+	private $default_configuration, $alt_config;
 
 	private $max_width = "";
 	private $in_preview = FALSE;
@@ -51,7 +51,10 @@ class Chart extends \DataObject {
 	);
 
 	public function Configuration($force = FALSE) {
-		if($this->default_configuration && !$force) {
+		if($this->alt_config) {
+			// alt config set
+			return $this->alt_config;
+		} else if($this->default_configuration && !$force) {
 			return $this->default_configuration;
 		} else {
 			$this->default_configuration = $this->Configurations()->filter('IsDefault', 1)->sort('Sort ASC, Created DESC')->first();
@@ -117,11 +120,24 @@ class Chart extends \DataObject {
 	}
 
 	/**
+	 * set an alternate config for charting previews
+	 */
+	public function setAltConfig(ChartConfiguration $config) {
+		$this->alt_config = $config;
+		return $this;
+	}
+
+	/**
 	 * PreviewURL
 	 * @note is used as an iframe src URL to preview charts in CMS/admin
 	 */
 	public function PreviewURL() {
-		return \Controller::join_links( \Director::baseURL(),  'chartview', 'preview', $this->ID);
+		$suffix = "";
+		$url = \Controller::join_links( \Director::baseURL(),  'chartview', 'preview', $this->ID);
+		if($this->alt_config) {
+			$url .=  '?config=' . $this->alt_config->ID;
+		}
+		return $url;
 	}
 
 	private function CsvUploadField() {

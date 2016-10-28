@@ -5,4 +5,4 @@ After:
 ---
 Director:
   rules:
-    'chartview//$ID/$Action' : 'ChartView'
+    'chartview//$Action!/$ID!' : 'ChartView'

@@ -1,14 +1,17 @@
 <?php
 namespace Codem\Charts;
+use Codem\Charts\Chart as Chart;
+use Codem\Charts\ChartConfiguration as ChartConfiguration;
+
 class ChartPreviewField extends \FormField {
 
-	private $chart;
+	private $chart, $chart_configuration;
 
 	public function getTemplates() {
 		return array('ChartPreviewField');
 	}
 
-	public function setChart($chart) {
+	public function setChart(Chart $chart) {
 		$this->chart = $chart;
 		return $this;
 	}

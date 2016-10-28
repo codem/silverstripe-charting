@@ -121,6 +121,14 @@ class ChartConfiguration extends \DataObject {
 			$fields->removeByName('IncludeTitleInChart');
 		}
 
+		if($this->ID) {
+			// preview chart with this config
+			$this->Chart()->setAltConfig( $this );
+			$fields->addFieldsToTab('Root.Main', array(
+				\LiteralField::create('ChartPreviewWithConfigLiteral', '<p class="message">Preview of chart, with this configuration.</p>'),
+				ChartPreviewField::create('ChartPreview', 'Preview')->setChart( $this->Chart() ),
+			));
+		}
 		return $fields;
 	}
 
